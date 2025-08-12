@@ -1,0 +1,20 @@
+
+
+-recherche dans base de données ttes les information relatives selon l'expérience des users (simulateur) et donner des résultats qui match le mieux avec le cursus de l'utilisateur 
+
+
+corriger partager frontend (jsnob) 
+google auth
+fb auth
+websocket
+enregestrer la connexion
+
+
+profil :
+définir objectif et save 
+activer notification 
+désactiver notification 
+
+profile/setup 
+Bannir un utilisateur 
+
