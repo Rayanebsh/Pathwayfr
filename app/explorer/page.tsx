@@ -1,95 +1,204 @@
 "use client"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Logo } from "@/components/ui/logo"
-import { Sparkles } from "lucide-react"
-import Link from "next/link"
+
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import Navbar from "@/components/Navbar"
 
+type University = {
+  id_university: number
+  univ_name: string
+  city: string
+}
+
+type Speciality = {
+  id_speciality: number
+  speciality_name: string
+}
+
+type Experience = {
+  id_experience: number
+  application_year: number
+  candidature_year: string
+  study_year_at_application_time: string
+  level_tcf: number
+  bac_average: number | null
+  comment: string
+  is_validated: boolean
+  speciality: Speciality
+  universities: University[]
+  average_each_year: Record<string, number>
+  university_accepted_in: string[]
+  university_rejected_in: string[]
+}
+
 export default function ExplorerPage() {
+  const [experiences, setExperiences] = useState<Experience[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchExperiences = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:5000/experience/explorer")
+        
+        // ✅ AJOUT : Vérifier le status de la réponse
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
+        
+        const data = await res.json()
+        
+        // ✅ AJOUT : Log détaillé pour débugger
+        console.log("Données reçues de l'API:", data)
+        console.log("Type des données:", typeof data)
+        console.log("Est un tableau:", Array.isArray(data))
+        
+        // Vérifier que data est bien un tableau
+        if (Array.isArray(data)) {
+          setExperiences(data)
+        } else {
+          console.error("Les données reçues ne sont pas un tableau:", data)
+          setExperiences([])
+        }
+      } catch (error) {
+        console.error("Erreur API:", error)
+        setExperiences([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchExperiences()
+  }, [])
+
+
+
+
+  if (loading) return <p className="text-center text-gray-500">Chargement...</p>
+
+  // Vérification si experiences est vide ou pas un tableau
+  if (!Array.isArray(experiences) || experiences.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">📘 Expériences partagées</h1>
+        <p className="text-center text-gray-500">Aucune expérience trouvée.</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Navigation dynamique */}
+    <>
       <Navbar />
-      <main className="container mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-6">
-            <Sparkles className="w-4 h-4 mr-2" />
-            Mini Blog & Actualités
-          </div>
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">
-            Comprendre les Études en France
-          </h1>
-          <p className="text-slate-600 max-w-2xl mx-auto text-lg">
-            Conseils, témoignages et ressources utiles pour préparer ton départ
-          </p>
-        </div>
-        {/* Articles récents */}
-        <div className="mb-16">
-          <h2 className="text-2xl font-bold mb-6 text-blue-700">Articles récents</h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card className="border-blue-200 bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all">
-              <CardHeader>
-                <CardTitle className="text-blue-700 text-lg">Comment choisir son université ?</CardTitle>
-                <CardDescription className="text-slate-600">Méthodes et critères pour bien s’orienter</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 text-sm">Découvrez les points clés pour sélectionner l’université qui correspond à votre projet : réputation, spécialités, vie étudiante, localisation…</p>
-              </CardContent>
-            </Card>
-            <Card className="border-blue-200 bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all">
-              <CardHeader>
-                <CardTitle className="text-blue-700 text-lg">Le système LMD expliqué</CardTitle>
-                <CardDescription className="text-slate-600">Licence, Master, Doctorat : comprendre le parcours</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 text-sm">Le système LMD structure les études supérieures en France. On vous explique les étapes, les équivalences et les débouchés.</p>
-              </CardContent>
-            </Card>
-            <Card className="border-blue-200 bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all">
-              <CardHeader>
-                <CardTitle className="text-blue-700 text-lg">TCF vs DELF : quoi passer ?</CardTitle>
-                <CardDescription className="text-slate-600">Les tests de français pour les étudiants étrangers</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 text-sm">TCF ou DELF ? On compare les deux examens, leurs objectifs, formats et conseils pour réussir.</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-        {/* Témoignages */}
-        <div className="mb-16">
-          <h2 className="text-2xl font-bold mb-6 text-blue-700">Témoignages d’étudiants</h2>
-          <div className="grid md:grid-cols-2 gap-8">
-            <Card className="border-blue-200 bg-white/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-blue-700 text-lg">Fatou, 21 ans – Licence à Lyon</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 text-sm">« J’ai choisi Lyon pour son ambiance et la qualité des enseignements. L’intégration a été facilitée par les associations étudiantes ! »</p>
-              </CardContent>
-            </Card>
-            <Card className="border-blue-200 bg-white/80 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-blue-700 text-lg">Youssef, 23 ans – Master à Paris</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 text-sm">« Le Master à Paris m’a ouvert beaucoup de portes. Les stages sont nombreux et le réseau d’anciens est très utile pour trouver un emploi. »</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-        {/* CTA */}
-        <div className="text-center py-12">
-          <h3 className="text-xl font-bold mb-4 text-blue-700">Tu veux partager ton expérience ?</h3>
-          <Link href="/partager">
-            <Button className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-lg px-8 py-4">
-              Partager mon témoignage
-            </Button>
-          </Link>
-        </div>
-      </main>
-    </div>
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <h1 className="text-2xl font-bold">📘 Expériences partagées</h1>
+        {experiences.map((exp) => (
+          <Card key={exp.id_experience} className="shadow-lg border">
+            <CardHeader className="flex justify-between items-center">
+              <CardTitle className="flex justify-between w-full">
+                <span>
+                  🎓 {exp.speciality?.speciality_name} – Année d'étude : {exp.study_year_at_application_time}
+                </span>
+                <Badge
+                  className={`ml-2 ${exp.is_validated ? "bg-green-500" : "bg-red-500"}`}
+                >
+                  {exp.is_validated ? "Accepté ✅" : "Refusé ❌"}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Année + Bac */}
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>📅 Année de candidature : {exp.application_year}</span>
+                <span>
+                  🎯 Niveau TCF : <b className="text-blue-600">{exp.level_tcf}</b>
+                </span>
+              </div>
+              {exp.bac_average && (
+                <p className="text-sm text-gray-700">
+                  📖 Moyenne Bac : <b>{exp.bac_average}/20</b>
+                </p>
+              )}
+              <Separator />
+              {/* Average each year */}
+              {exp.average_each_year && Object.keys(exp.average_each_year).length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">📊 Moyennes par année :</h3>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                    {["1AS", "2AS", "3AS", "L1", "L2", "L3", "M1", "M2"].map((year) => {
+                      const avg = exp.average_each_year[year]
+                      if (avg !== undefined && avg !== null) {
+                        return (
+                          <li key={year}>
+                            {year} : <b>{avg}</b>
+                          </li>
+                        )
+                      }
+                      return null
+                    })}
+                  </ul>
+                </div>
+              )}
+              <Separator />
+              {/* Universités ciblées */}
+              <div>
+                <h3 className="font-semibold mb-2">🏛 Universités ciblées :</h3>
+                <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                  {exp.universities.map((univ) => (
+                    <li key={univ.id_university}>
+                      {univ.univ_name} <span className="text-gray-500">({univ.city})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* ✅ AJOUT : Universités acceptées */}
+              {exp.university_accepted_in && exp.university_accepted_in.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="font-semibold mb-2 text-green-600">✅ Universités acceptées :</h3>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                      {exp.university_accepted_in
+                        .filter(univ => univ && univ.trim() && univ.trim() !== "") // Filtrer les valeurs vides
+                        .map((univ, index) => (
+                          <li key={index} className="text-green-700">
+                            {univ}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+              {/* ❌ AJOUT : Universités refusées */}
+              {exp.university_rejected_in && exp.university_rejected_in.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="font-semibold mb-2 text-red-600">❌ Universités refusées :</h3>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                      {exp.university_rejected_in
+                        .filter(univ => univ && univ.trim() && univ.trim() !== "") // Filtrer les valeurs vides
+                        .map((univ, index) => (
+                          <li key={index} className="text-red-700">
+                            {univ}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+              <Separator />
+              {/* Commentaire */}
+              <div>
+                <h3 className="font-semibold mb-2">📝 Commentaire :</h3>
+                <p className="text-gray-800 text-sm leading-relaxed">
+                  {exp.comment}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </>
   )
 }

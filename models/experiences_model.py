@@ -29,6 +29,8 @@ class Experience(db.Model):
         db.ForeignKey('specialities.id_speciality', ondelete='CASCADE', onupdate='CASCADE'),
         nullable=False
     )
+    university_accepted_in = db.Column(ARRAY(db.Integer), nullable=True)  # Universités acceptées
+    university_rejected_in = db.Column(ARRAY(db.Integer), nullable=True)
 
     user = db.relationship('User', backref='experiences')
     speciality = db.relationship('Speciality', backref='experiences', lazy=True)
@@ -38,7 +40,12 @@ class Experience(db.Model):
         back_populates='experiences'  # ce nom doit aussi exister côté University
     )
 
-    is_validated = db.Column(db.Boolean, default=False)
+    is_validated = db.Column(
+    db.Enum("pending", "approved", "rejected", name="experience_status"),
+    default="pending",
+    nullable=False
+    )
+
 
 
 
