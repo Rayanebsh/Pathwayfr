@@ -4,33 +4,14 @@ from models.experiences_model import Experience
 from models.user_model import User
 from app import db
 from models.university_model import University
+from sqlalchemy import func
+
 
 
 
 admin_bp = Blueprint ("admin",__name__,url_prefix="/admin")
 
 
-# à tester
-
-@admin_bp.route("/<int:id_experience>", methods=["DELETE"])
-@jwt_required()
-def delete_experience(id_experience):
-    current_user_id = get_jwt_identity()
-    current_user = User.query.get(current_user_id)
-
-    if not current_user:
-        return jsonify({"error": "Utilisateur connecté introuvable"}), 404
-
-    experience = Experience.query.get_or_404(id_experience)
-
-    # Admin peut supprimer n'importe quelle expérience
-    # L'utilisateur normal ne peut supprimer QUE ses propres expériences
-    if current_user.role == "admin" or experience.user_id == current_user_id:
-        db.session.delete(experience)
-        db.session.commit()
-        return jsonify({"message": "Expérience supprimée"}), 200
-    else:
-        return jsonify({"error": "Accès refusé"}), 403
     
 
 # Récupérer les expériences en attente de validation à tester 
@@ -60,6 +41,30 @@ def get_pending_experiences():
     return jsonify(results), 200
 
 
+@admin_bp.route("/<int:id_experience>", methods=["DELETE"])
+@jwt_required()
+def delete_experience(id_experience):
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+
+    if not current_user:
+        return jsonify({"success": False, "error": "Utilisateur connecté introuvable"}), 404
+
+    experience = Experience.query.get_or_404(id_experience)
+
+    if current_user.role == "admin" or experience.user_id == current_user_id:
+        try:
+            db.session.delete(experience)
+            db.session.commit()
+            return jsonify({"success": True, "message": "Expérience supprimée"}), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"success": False, "error": f"Erreur lors de la suppression : {str(e)}"}), 500
+    else:
+        return jsonify({"success": False, "error": "Accès refusé"}), 403
+
+
+
 @admin_bp.route("/delete/<int:user_id>", methods=["DELETE"])
 @jwt_required()
 def delete_user(user_id):
@@ -67,21 +72,29 @@ def delete_user(user_id):
     current_user = User.query.get(current_user_id)
 
     if not current_user:
-        return jsonify({"error": "Utilisateur connecté introuvable"}), 404
+        return jsonify({"success": False, "error": "Utilisateur connecté introuvable"}), 404
 
-    # Optionnel : ne pas laisser un user se supprimer lui-même
+    # Empêcher qu’un utilisateur se supprime lui-même
     if current_user_id == user_id:
-        return jsonify({"error": "Vous ne pouvez pas vous supprimer vous-même"}), 400
+        return jsonify({"success": False, "error": "Vous ne pouvez pas supprimer votre propre compte"}), 400
 
     target_user = User.query.get_or_404(user_id)
 
-    # Par exemple, seuls les admins peuvent supprimer n'importe qui
     if current_user.role == "admin":
-        db.session.delete(target_user)
-        db.session.commit()
-        return jsonify({"message": "Utilisateur supprimé"})
+        # Optionnel : empêcher la suppression d’un autre admin
+        if target_user.role == "admin":
+            return jsonify({"success": False, "error": "Vous ne pouvez pas supprimer un autre administrateur"}), 403
+
+        try:
+            db.session.delete(target_user)
+            db.session.commit()
+            return jsonify({"success": True, "message": "Utilisateur supprimé"}), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"success": False, "error": f"Erreur lors de la suppression : {str(e)}"}), 500
     else:
-        return jsonify({"error": "Accès refusé"}), 403
+        return jsonify({"success": False, "error": "Accès refusé"}), 403
+
 
 
 
@@ -194,74 +207,27 @@ def create_specialities():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
-from sqlalchemy import func
-from models import User, Service
-
-@admin_bp.route("/stats/usersC", methods=["GET"])
-@jwt_required()
-def count_users():
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify({"error": "Accès non autorisé"}), 403
-        count = User.query.count()
-        countp = Service.query.filter(Service.premium == True).count()
-        countf = Service.query.filter(Service.premium == False).count()
-        return {
-            "total_users":count,
-            "total_premuim_users":countp,
-            "total_free_users":countf
-            }, 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-     
-
-
     
-@admin_bp.route("stats/experiences",methods=["GET"])
-@jwt_required()
-def countE():
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id==current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify ({"error": "accès non autorisé"}), 403
-        count = Experience.query.count()
-        countA = Experience.query.filter(Experience.is_validated == "approved").count()
-        countR = Experience.query.filter(Experience.is_validated == "rejected").count()
-        CountM = Experience.query.filter(Experience.is_validated == "pending").count()
-        TA = (count/ countA) *100 if countA > 0 else 0
-        return {
-            "total_experiences": count,
-            "approved_experiences": countA,
-            "rejected_experiences": countR,
-            "pending_experiences": CountM,
-            "Taux d'approbation": TA
-        }, 200
-    finally:
-        db.close()
-
+    ########################################################################
 
 @admin_bp.route("stats/users")
 @jwt_required()
 def getUsers():
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id==current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user==current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
-        users = db.session.query(User.first_name, User.last_name ,User.email, func.date(User.created_at) ,User.isBanned, User.premium).all()
+        users = db.session.query(User.first_name, User.last_name ,User.email, func.date(User.created_at).label("created_at") ,User.isbanned, User.subscription,User.id_user).all()
         users_list = [
             {
+                "id_user": user.id_user,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "email": user.email,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
-                "isBanned": user.isBanned,
-                "premium": user.premium
+                "isbanned": user.isbanned,
+                "subscription": user.subscription
             } for user in users
         ]
         return jsonify(users_list), 200
@@ -276,13 +242,13 @@ def getUsers():
 def bannir(user_id):
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
-        user = db.session.query(User).filter(User.id == user_id).first()
+        user = db.session.query(User).filter(User.id_user == user_id).first()
         if not user:
             return jsonify({"error": "Utilisateur non trouvé"}), 404
-        user.isBanned = True
+        user.isbanned = True
         db.session.commit()
         return jsonify({"message": "Utilisateur banni avec succès"}), 200
     except Exception as e:
@@ -295,13 +261,13 @@ def bannir(user_id):
 def unban(user_id):
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
-        user= db.session.query(User).filter(User.id == user_id).first()
+        user= db.session.query(User).filter(User.id_user == user_id).first()
         if not user:
             return jsonify({"error": "Utilisateur non trouvé"}), 404
-        user.isBanned = False
+        user.isbanned = False
         db.session.commit()
         return jsonify({"message": "Utilisateur débanni avec succès"}), 200
     except Exception as e:
@@ -310,13 +276,13 @@ def unban(user_id):
     
 
 
-@admin_bp.route("/users/<int:user_id>/premium", methods=["PATCH"])
+@admin_bp.route("/users/<int:user_id>/premuim", methods=["PATCH"])
 def set_premium(user_id):
     try:
-        user =db.session.query(User).filter(User.id == user_id).first()
+        user =db.session.query(User).filter(User.id_user == user_id).first()
         if not user:
             return jsonify({"error": "Utilisateur non trouvé"}), 404
-        user.premium = True
+        user.subscription = True
         db.session.commit()
         return jsonify({"message": "Utilisateur mis en premium avec succès"}), 200
     except Exception as e:
@@ -329,10 +295,10 @@ def set_premium(user_id):
 @admin_bp.route("/users/<int:user_id>/free", methods=["PATCH"])
 def set_free(user_id):
     try:
-        user = db.session.query(User).filter(User.id == user_id).first()
+        user = db.session.query(User).filter(User.id_user == user_id).first()
         if not user:
             return jsonify({"error": "Utilisateur non trouvé"}), 404
-        user.premium = False
+        user.subscription = False
         db.session.commit()
         return jsonify({"message": "Utilisateur mis en free avec succès"}), 200
     except Exception as e:
@@ -341,12 +307,12 @@ def set_free(user_id):
 
 
 
-@admin_bp.route("experiences/<int:id_experience>/approve")
+@admin_bp.route("experiences/<int:id_experience>/approve",methods=["PATCH"])
 @jwt_required()
 def approve_experiences(id_experience):
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
         experience = db.session.query(Experience).filter(Experience.id_experience == id_experience).first()
@@ -360,12 +326,12 @@ def approve_experiences(id_experience):
         return jsonify({"error": str(e)}), 500
 
 
-@admin_bp.route("experiences/<int:id_experience>/reject")
+@admin_bp.route("experiences/<int:id_experience>/reject",methods=["PATCH"])
 @jwt_required()
 def reject_experiences(id_experience):
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
         experience = db.session.query(Experience).filter(Experience.id_experience == id_experience).first()
@@ -379,118 +345,56 @@ def reject_experiences(id_experience):
         return jsonify({"error": str(e)}), 500
 
 
-
-        
-
-@admin_bp.route("stats/users_actifs")
+@admin_bp.route("all_stats",methods=["GET"])
 @jwt_required()
-def count_active_users():
+def all_stats():
     try:
         current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
         if not current_user or current_user.role.strip().lower() != "admin":
             return jsonify({"error": "Accès non autorisé"}), 403
-        count = db.session.query(func.count(User.id)).filter(User.isBanned == False).scalar()
-        return {
-            "active_users": count
-        }, 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
 
-
-
-
-@admin_bp.route("stats/new_users30")
-@jwt_required()
-def count_new_users_30_days():
-    import datetime
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.query(User).filter(User.id == current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify({"error": "Accès non autorisé"}), 403
-        total_users = db.query(func.count(User.id)).scalar()
-        if total_users == 0:
-            return jsonify({"new_users_last_30_days": 0}), 200
+        # Statistiques des utilisateurs
+        total_users = db.session.query(func.count(User.id_user)).scalar()
+        active_users = db.session.query(func.count(User.id_user)).filter(User.isbanned == False).scalar()
+        premium_users = db.session.query(func.count(User.id_user)).filter(User.subscription == True).scalar()
+        taux_conversion = (premium_users / total_users) * 100 if total_users > 0 else 0
+        users_banned = total_users - active_users
+        taux_conversion_last_30_days = 0
+        import datetime
         thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
-        count = db.query(func.count(User.id)).filter(User.created_at >= thirty_days_ago).scalar()
-        TA = (count/total_users) * 100 if total_users > 0 else 0
-        return {
-            "new_users_last_30_days": count,
-            "Taux d'inscription": TA
-        }, 200
+        new_users_last_30_days = db.session.query(func.count(User.id_user)).filter(User.created_at >= thirty_days_ago).scalar()
+        if total_users > 0:
+            taux_conversion_last_30_days = (new_users_last_30_days / total_users) * 100
+
+
+        # Statistiques des expériences
+        total_experiences = db.session.query(func.count(Experience.id_experience)).scalar()
+        pending_experiences = db.session.query(func.count(Experience.id_experience)).filter(Experience.is_validated == "pending").scalar()
+        approved_experiences = db.session.query(func.count(Experience.id_experience)).filter(Experience.is_validated == "approved").scalar()
+        rejected_experiences = db.session.query(func.count(Experience.id_experience)).filter(Experience.is_validated == "rejected").scalar()
+        taux_approbation = (approved_experiences / total_experiences) * 100 if total_experiences > 0 else 0
+
+        stats = {
+            "total_users": total_users,
+            "active_users": active_users,
+            "premium_users": premium_users,
+            "total_experiences": total_experiences,
+            "pending_experiences": pending_experiences,
+            "approved_experiences": approved_experiences,
+            "rejected_experiences": rejected_experiences,
+            "taux_conversion": taux_conversion,
+            "taux_approbation": taux_approbation,
+            "banned_users_count": users_banned,
+            "new_users_last_30_days": new_users_last_30_days,
+            "taux_conversion_last_30_days": taux_conversion_last_30_days
+        }
+
+        return jsonify(stats), 200
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-    
-
-
-@admin_bp.route("stats/taux_conversion_premuim")
-@jwt_required()
-def conversion_rate_premium():
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.session.query(User).filter(User.id == current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify({"error": "Accès non autorisé"}), 403
-        total_users = db.session.query(func.count(User.id)).scalar()
-        if total_users == 0:
-            return jsonify({"conversion_rate": 0.0}), 200
-        total_users_premuim = db.session.query(func.count(User.id)).filter(User.premium == True).scalar()
-        conversion_rate = (total_users_premuim / total_users) * 100
-        return {
-            "conversion_rate": conversion_rate
-        }, 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-    
-
-@admin_bp.route("stats/taux_conversion_premuim30days")
-@jwt_required()
-def conversion_ratePremium():
-    import datetime
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.session.query(User).filter(User.id == current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify({"error": "Accès non autorisé"}), 403
-        total_users = db.session.query(func.count(User.id)).scalar()
-        if total_users == 0:
-            return jsonify({"conversion_rate": 0.0}), 200
-        month = datetime.datetime.utcnow() - datetime.timedelta(days=30)
-        total_users_premuim = db.session.query(func.count(User.id)).filter(User.premium == True, User.created_at>=month).scalar()
-        conversion_rate = (total_users_premuim / total_users) * 100
-        return {
-            "conversion_rate_this_month": conversion_rate
-        }, 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-    
-@admin_bp.route("stats/count_users_banned")
-@jwt_required() 
-def count_banned_users():
-    try:
-        current_user_id = get_jwt_identity()
-        current_user = db.session.query(User).filter(User.id == current_user_id).first()
-        if not current_user or current_user.role.strip().lower() != "admin":
-            return jsonify({"error":"Accès non autorisé"}), 403
-        count = db.session.query(User).filter(User.isBanned ==True).count()
-        return {
-            "banned_users_count": count
-        }, 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-    
-    
-
-
-
 
 
 

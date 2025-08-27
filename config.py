@@ -8,7 +8,7 @@ load_dotenv()
 
 
 username = quote(os.getenv("DB_USERNAME"))
-password = quote(os.getenv("DB_PASSWORD"))  # encodage si besoin (ex: caractères spéciaux)
+password = quote(os.getenv("DB_PASSWORD"))  
 host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 dbname = os.getenv("DB_NAME")
@@ -28,3 +28,4 @@ class Config:
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ["access", "refresh"]
     FRONTEND_URL = os.getenv("FRONTEND_URL")
+    NEXT_PUBLIC_API_URL = os.getenv("NEXT_PUBLIC_API_URL")

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-
+from models.user_model import User
 experience_bp = Blueprint("experience", __name__, url_prefix="/experience")
 
 
@@ -101,7 +101,7 @@ def create_experience():
             application_year=data["application_year"],
             average_each_year=avg_dict,
             comment=data["comment"],
-            is_validated=bool(data["is_validated"]),
+            is_validated=data.get("is_validated"),
             bac_type=bac_type,
             bac_average=bac_average,
             study_year_at_application_time=data["study_year_at_application_time"],
@@ -109,7 +109,8 @@ def create_experience():
             universities=universities,
             # ✅ AJOUT : Nouveaux champs pour universités acceptées/refusées
             university_accepted_in=accepted_unis,
-            university_rejected_in=rejected_unis
+            university_rejected_in=rejected_unis,
+            
         )
 
         db.session.add(new_exp)
@@ -364,3 +365,31 @@ def get_experience_by_id(experience_id):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
+@experience_bp.route("/summary", methods=["GET"])
+@jwt_required()
+def get_experience_summary():
+    
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = db.session.query(User).filter(User.id_user == current_user_id).first()
+        if not current_user or current_user.role.strip().lower() != "admin":
+            return jsonify({"error": "Accès non autorisé"}), 403
+        experiences = Experience.query.all()
+        data = []
+
+        for exp in experiences:
+            user = User.query.get(exp.user_id)
+            data.append({
+                "id_experience": exp.id_experience,
+                "user_id": exp.user_id,
+                "first_name": user.first_name if user else None,
+                "last_name": user.last_name if user else None,
+                "comment": exp.comment,
+                "is_validated":exp.is_validated
+            })
+
+        return jsonify(data), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

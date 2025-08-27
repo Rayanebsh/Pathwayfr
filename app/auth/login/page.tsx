@@ -54,16 +54,65 @@ export default function LoginPage() {
         }),
       })
       const data = await response.json()
+      
       if (!response.ok) {
         throw new Error(data.error || "Erreur lors de la connexion.")
       }
-      // Stocke les tokens JWT
+
+      // Stocke les tokens JWT ET les données utilisateur
       setTokens({ accessToken: data.access_token, refreshToken: data.refresh_token })
-      setIsLoading(false)
-      router.push("/profile/setup/")
+      
+      // Stocker les données utilisateur
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user))
+      }
+
+      // Déclencher l'événement de changement d'auth pour mettre à jour la navbar
+      window.dispatchEvent(new Event('authStatusChanged'))
+
+      // Vérifier si l'utilisateur a déjà complété son profil
+      const token = data.access_token
+      
+      try {
+        // Utiliser le nouvel endpoint qui vérifie directement dans la BD
+        const profileStatusResponse = await fetch("http://127.0.0.1:5000/users/profile/status", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        if (profileStatusResponse.ok) {
+          const statusData = await profileStatusResponse.json()
+          console.log("Status du profil:", statusData)
+          
+          if (statusData.is_complete) {
+            console.log("Profil complet, redirection vers explorer")
+            // Récupérer les données complètes du profil si nécessaire
+            if (statusData.profile_data) {
+              localStorage.setItem("userProfile", JSON.stringify(statusData.profile_data))
+            }
+            setIsLoading(false)
+            router.push("/explorer")
+          } else {
+            console.log("Profil incomplet, champs manquants:", statusData.missing_fields)
+            setIsLoading(false)
+            router.push("/profile/setup")
+          }
+        } else {
+          console.log("Erreur lors de la vérification du status, redirection vers setup")
+          setIsLoading(false)
+          router.push("/profile/setup")
+        }
+      } catch (profileError) {
+        console.log("Erreur lors de la vérification du profil, redirection vers setup")
+        setIsLoading(false)
+        router.push("/profile/setup")
+      }
+
     } catch (err: any) {
       setIsLoading(false)
-      alert(err.message)
+      setErrors({ global: err.message })
     }
   }
 
@@ -100,6 +149,13 @@ export default function LoginPage() {
               <CardDescription>Accédez à votre compte PathwayFR</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Affichage des erreurs globales */}
+              {errors.global && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                  {errors.global}
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-gray-700">

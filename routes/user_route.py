@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models.user_model import User
+from models.service_model import Service
 from app import db
 import datetime
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -14,10 +15,14 @@ def get_users():
     return jsonify([u.to_dict() for u in users])
 
 # GET user by ID
-@users_bp.route("/<int:user_id>", methods=["GET"])
-def get_user(user_id):
-    user = User.query.get_or_404(user_id)
-    return jsonify(user.to_dict())
+# GET current user profile
+@users_bp.route("/me", methods=["GET"])
+@jwt_required()
+def get_current_user():
+    current_user_id = get_jwt_identity()
+    user = User.query.get_or_404(current_user_id)
+    return jsonify(user.to_dict()), 200
+
 
 
 # PUT update user
@@ -82,3 +87,82 @@ def profile_setup():
         db.session.commit()
         return jsonify(user.to_dict())
 
+
+# Profil Académique
+@users_bp.route("/profile/academic", methods=["GET"])
+@jwt_required()
+def get_academic_profile():
+    get_current_user = get_jwt_identity()
+    user = User.query.get_or_404(get_current_user) 
+    academic_fields = {
+        "bac_type",
+        "tcf_score",
+        "bac_average",
+        "speciality",
+        "annee_etude_actuelle",
+        "accepted",
+        "subscription"
+    }
+    academic_data = {field: getattr(user, field) for field in academic_fields}
+    return jsonify(academic_data), 200
+
+# profile académique - mise à jour
+@users_bp.route("/profile/academic", methods=["PUT"])
+@jwt_required()
+def update_academic_profile():
+    get_current_user = get_jwt_identity()
+    user = User.query.get_or_404(get_current_user)
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Aucune donnée reçue"}), 400
+
+    academic_fields = {
+        "bac_type",
+        "tcf_score",
+        "bac_average",
+        "speciality",
+        "annee_etude_actuelle",
+        "accepted"
+    }
+
+    for key, value in data.items():
+        if key in academic_fields:
+            setattr(user, key, value)
+
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
+
+
+# Dans votre backend (Flask/FastAPI), ajoutez cette route
+
+@users_bp.route('/profile/status', methods=['GET'])
+@jwt_required()
+def get_profile_status():
+    try:
+        current_user_id = get_jwt_identity()
+        user_profile = db.session.query(User).filter_by(id_user=current_user_id).first()
+
+        if not user_profile:
+            return jsonify({
+                "is_complete": False,
+                "missing_fields": ["annee_etude_actuelle"],
+                "message": "Aucun profil trouvé"
+            }), 200
+        
+        # Vérifier les champs obligatoires
+        missing_fields = []
+        
+        # Vérifier le niveau d'études (ne doit pas être NULL ou vide)
+        if not user_profile.annee_etude_actuelle or str(user_profile.annee_etude_actuelle).strip() == '':
+            missing_fields.append("annee_etude_actuelle")
+        
+        is_complete = len(missing_fields) == 0
+        
+        return jsonify({
+            "is_complete": is_complete,
+            "missing_fields": missing_fields,
+            "profile_data": user_profile.to_dict() if is_complete else None
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

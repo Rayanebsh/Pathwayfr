@@ -218,3 +218,28 @@ def reset_password(token):
 def password_reset_success():
     return redirect("http://localhost:3000/auth/password-reset-success")
 
+
+
+@auth_bp.route('/verify-admin', methods=["GET"])
+@jwt_required()
+def isadmin():
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = db.session.query(User).filter(User.id_user==current_user_id).first()
+        
+        if not current_user:
+            return jsonify({
+                'error': 'Utilisateur non trouvé',
+                'role': None
+            }), 404
+        
+        return jsonify({
+            'role': current_user.role,
+            'isAdmin': current_user.role == 'admin'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Erreur serveur',
+            'message': str(e)
+        }), 500

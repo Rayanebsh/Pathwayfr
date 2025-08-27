@@ -342,7 +342,7 @@ export default function PartagerPage() {
         candidature_year: formData.candidature_year || null,
         speciality_id: formData.targetSpecialties[0],
         university_ids: formData.targetUniversities,
-        is_validated: true,
+        is_validated: "pending",
         university_accepted_in: formData.acceptedUniversities,
         university_rejected_in: formData.rejectedUniversities,
         ...averageEachYearPayload

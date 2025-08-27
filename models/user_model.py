@@ -27,6 +27,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     speciality = db.Column(db.String)
     annee_etude_actuelle = db.Column(db.String)
+    subscription = db.Column(db.Boolean, default=False)
+    isbanned = db.Column(db.Boolean, default=False)
 
     __table_args__ = (
         db.CheckConstraint("role IN ('user', 'admin')"),
@@ -54,7 +56,12 @@ class User(db.Model):
             "date_of_birth": self.date_of_birth.isoformat() if self.date_of_birth else None,
             "a_propos": self.a_propos,
             "univ_actuel": self.univ_actuel,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "annee_etude_actuelle": self.annee_etude_actuelle,
+            "speciality": self.speciality,
+            "is_verified": self.is_verified,
+            "subscription": self.subscription,
+            "isbanned": self.isbanned
         }
 
 # ✅ Import placé ici pour éviter les imports circulaires

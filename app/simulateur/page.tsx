@@ -97,15 +97,27 @@ export default function SimulateurPage() {
 
   // Simulation de vérification de connexion
   useEffect(() => {
-    // Ici on vérifierait si l'utilisateur est connecté et a un profil complet
-    const checkAuth = () => {
-      const user = localStorage.getItem("user")
-      const profile = localStorage.getItem("userProfile")
-      setIsLoggedIn(!!user)
-      setHasProfile(!!profile)
-    }
-    checkAuth()
-  }, [])
+  const checkAuth = () => {
+    const token = localStorage.getItem("access_token")
+    const user = localStorage.getItem("user")
+    const profile = localStorage.getItem("userProfile")
+
+    setIsLoggedIn(!!token)          // ✅ utilise le token comme critère principal
+    setHasProfile(!!profile)        // profil reste optionnel
+  }
+
+  checkAuth()
+
+  // écoute les changements dans localStorage comme dans la Navbar
+  const handleStorageChange = () => checkAuth()
+  window.addEventListener("storage", handleStorageChange)
+  window.addEventListener("authStatusChanged", handleStorageChange)
+
+  return () => {
+    window.removeEventListener("storage", handleStorageChange)
+    window.removeEventListener("authStatusChanged", handleStorageChange)
+  }
+}, [])
 
   if (!isLoggedIn) {
     return (

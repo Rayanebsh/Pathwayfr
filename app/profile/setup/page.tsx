@@ -28,26 +28,49 @@ export default function ProfileSetupPage() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
+  const [hasBac, setHasBac] = useState<boolean | null>(null)
+  const [hasTcf, setHasTcf] = useState<boolean | null>(null)
 
   useEffect(() => {
-    // Récupérer le token (adapter selon ton système d'auth)
+    // Vérifier si l'utilisateur est connecté
     const token = localStorage.getItem("access_token")
-    if (!token) return
-    fetch("/api/profile/setup", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.message === "Profil déjà complété") {
-          router.push("/home")
-        } else {
-          router.push("/profile/setup")
+    if (!token) {
+      router.push("/auth/login")
+      return
+    }
+
+    // Vérifier si le profil est déjà complété avec le nouvel endpoint
+    const checkProfileStatus = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:5000/users/profile/status", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        
+        if (res.ok) {
+          const statusData = await res.json()
+          console.log("Status du profil dans setup:", statusData)
+          
+          if (statusData.is_complete) {
+            console.log("Profil déjà complet, redirection vers explorer")
+            if (statusData.profile_data) {
+              localStorage.setItem("userProfile", JSON.stringify(statusData.profile_data))
+            }
+            router.push("/explorer")
+          } else {
+            console.log("Profil incomplet, champs manquants:", statusData.missing_fields)
+          }
         }
-      })
-      .catch(() => {})
+        // Si pas de profil ou profil incomplet, rester sur cette page
+      } catch (error) {
+        // En cas d'erreur, rester sur la page de setup
+        console.log("Erreur lors de la vérification du status:", error)
+      }
+    }
+
+    checkProfileStatus()
   }, [router])
 
   const totalSteps = 3
@@ -57,9 +80,22 @@ export default function ProfileSetupPage() {
     const currentStepErrors: Record<string, string> = {}
 
     if (step === 1) {
-      if (!formData.bacAverage) currentStepErrors.bacAverage = "La moyenne du bac est requise"
-      if (!formData.bacType) currentStepErrors.bacType = "Le type de bac est requis"
-      if (!formData.tcfScore) currentStepErrors.tcfScore = "Le score TCF est requis"
+      if (hasBac === null) {
+        currentStepErrors.hasBac = "Veuillez indiquer si vous avez passé le bac"
+      }
+      
+      if (hasBac === true) {
+        if (!formData.bacAverage) currentStepErrors.bacAverage = "La moyenne du bac est requise"
+        if (!formData.bacType) currentStepErrors.bacType = "Le type de bac est requis"
+      }
+      
+      if (hasTcf === null) {
+        currentStepErrors.hasTcf = "Veuillez indiquer si vous avez passé le TCF"
+      }
+      
+      if (hasTcf === true && !formData.tcfScore) {
+        currentStepErrors.tcfScore = "Le score TCF est requis"
+      }
     } else if (step === 2) {
       if (!formData.specialty) currentStepErrors.specialty = "La spécialité est requise"
       if (!formData.studyYear) currentStepErrors.studyYear = "L'année d'étude est requise"
@@ -86,9 +122,20 @@ export default function ProfileSetupPage() {
     setErrors({});
     
     // Validation finale avant envoi
-    if (!formData.bacAverage || !formData.bacType || !formData.tcfScore || 
-        !formData.specialty || !formData.studyYear || !formData.hasAcceptance) {
-      setErrors({ global: "Tous les champs sont requis" });
+    if (hasBac === null || hasTcf === null || !formData.specialty || !formData.studyYear || !formData.hasAcceptance) {
+      setErrors({ global: "Tous les champs obligatoires doivent être remplis" });
+      setIsLoading(false);
+      return;
+    }
+
+    if (hasBac === true && (!formData.bacAverage || !formData.bacType)) {
+      setErrors({ global: "Si vous avez passé le bac, la moyenne et le type sont requis" });
+      setIsLoading(false);
+      return;
+    }
+
+    if (hasTcf === true && !formData.tcfScore) {
+      setErrors({ global: "Si vous avez passé le TCF, le score est requis" });
       setIsLoading(false);
       return;
     }
@@ -103,21 +150,30 @@ export default function ProfileSetupPage() {
         return;
       }
 
-      // Correction de l'URL - suppression de /users/
+      const submitData: any = {
+        speciality: formData.specialty,
+        annee_etude_actuelle: formData.studyYear,
+        accepted: formData.hasAcceptance === "oui",
+      }
+
+      // Ajouter les données du bac seulement si l'utilisateur a passé le bac
+      if (hasBac === true) {
+        submitData.bac_average = parseFloat(formData.bacAverage)
+        submitData.bac_type = formData.bacType.toLowerCase().replace(/\s+/g, '_')
+      }
+
+      // Ajouter le score TCF seulement si l'utilisateur a passé le TCF
+      if (hasTcf === true) {
+        submitData.tcf_score = parseInt(formData.tcfScore)
+      }
+
       const res = await fetch("http://127.0.0.1:5000/users/profile/setup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          bac_average: parseFloat(formData.bacAverage), // Conversion en nombre
-          bac_type: formData.bacType.toLowerCase().replace(/\s+/g, '_'), // Format correct pour le backend
-          tcf_score: parseInt(formData.tcfScore), // Conversion en entier
-          speciality: formData.specialty,
-          annee_etude_actuelle: formData.studyYear,
-          accepted: formData.hasAcceptance === "oui" ? true : false, // Conversion en boolean
-        }),
+        body: JSON.stringify(submitData),
       });
   
       const data = await res.json();
@@ -130,6 +186,25 @@ export default function ProfileSetupPage() {
         setIsLoading(false);
         return;
       }
+
+      // Sauvegarder le profil dans localStorage
+      const profileData = {
+        bacAverage: hasBac ? formData.bacAverage : null,
+        bacType: hasBac ? formData.bacType : null,
+        tcfScore: hasTcf ? formData.tcfScore : null,
+        specialty: formData.specialty,
+        studyYear: formData.studyYear,
+        hasAcceptance: formData.hasAcceptance,
+        bac_average: hasBac ? parseFloat(formData.bacAverage) : null,
+        annee_etude_actuelle: formData.studyYear,
+        accepted: formData.hasAcceptance === "oui",
+        hasBac,
+        hasTcf,
+      }
+      localStorage.setItem("userProfile", JSON.stringify(profileData))
+
+      // Déclencher l'événement de changement d'auth pour mettre à jour la navbar
+      window.dispatchEvent(new Event('authStatusChanged'))
   
       console.log("Profile setup successful!");
       setIsLoading(false);
@@ -151,6 +226,35 @@ export default function ProfileSetupPage() {
         ...prev,
         [name]: "",
       }))
+    }
+  }
+
+  const handleBacChoice = (choice: boolean) => {
+    setHasBac(choice)
+    if (!choice) {
+      // Reset bac-related fields if user doesn't have bac
+      setFormData(prev => ({
+        ...prev,
+        bacAverage: "",
+        bacType: "",
+      }))
+    }
+    if (errors.hasBac) {
+      setErrors(prev => ({ ...prev, hasBac: "" }))
+    }
+  }
+
+  const handleTcfChoice = (choice: boolean) => {
+    setHasTcf(choice)
+    if (!choice) {
+      // Reset TCF score if user doesn't have TCF
+      setFormData(prev => ({
+        ...prev,
+        tcfScore: "",
+      }))
+    }
+    if (errors.hasTcf) {
+      setErrors(prev => ({ ...prev, hasTcf: "" }))
     }
   }
 
@@ -190,58 +294,116 @@ export default function ProfileSetupPage() {
                   <p className="text-gray-600">Parlez-nous de votre parcours scolaire</p>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="bacAverage" className="text-gray-700">
-                      Moyenne du Bac
-                    </Label>
-                    <Input
-                      id="bacAverage"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="20"
-                      placeholder="16.5"
-                      value={formData.bacAverage}
-                      onChange={(e) => handleChange("bacAverage", e.target.value)}
-                      className={`border-blue-200 focus:border-blue-800 ${errors.bacAverage ? "border-red-500" : ""}`}
-                    />
-                    {errors.bacAverage && <p className="text-sm text-red-600">{errors.bacAverage}</p>}
+                <div className="space-y-6">
+                  {/* Question Bac */}
+                  <div className="space-y-3">
+                    <Label className="text-gray-700 font-medium">Avez-vous passé le baccalauréat ?</Label>
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        variant={hasBac === true ? "default" : "outline"}
+                        onClick={() => handleBacChoice(true)}
+                        className={`flex-1 ${hasBac === true ? "bg-blue-800 hover:bg-blue-900" : "border-blue-200 hover:bg-blue-50"}`}
+                      >
+                        Oui, j'ai passé le bac
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={hasBac === false ? "default" : "outline"}
+                        onClick={() => handleBacChoice(false)}
+                        className={`flex-1 ${hasBac === false ? "bg-blue-800 hover:bg-blue-900" : "border-blue-200 hover:bg-blue-50"}`}
+                      >
+                        Non, je n'ai pas le bac
+                      </Button>
+                    </div>
+                    {errors.hasBac && <p className="text-sm text-red-600">{errors.hasBac}</p>}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="bacType" className="text-gray-700">
-                      Type de Bac
-                    </Label>
-                    <Select value={formData.bacType} onValueChange={(value) => handleChange("bacType", value)}>
-                      <SelectTrigger className={`border-blue-200 ${errors.bacType ? "border-red-500" : ""}`}> 
-                        <SelectValue placeholder="Sélectionnez votre type de bac" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {bacTypes.map((type) => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.bacType && <p className="text-sm text-red-600">{errors.bacType}</p>}
+                  {/* Champs Bac (conditionnels) */}
+                  {hasBac === true && (
+                    <div className="space-y-4 border-l-4 border-blue-200 pl-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="bacAverage" className="text-gray-700">
+                          Moyenne du Bac
+                        </Label>
+                        <Input
+                          id="bacAverage"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="20"
+                          placeholder="16.5"
+                          value={formData.bacAverage}
+                          onChange={(e) => handleChange("bacAverage", e.target.value)}
+                          className={`border-blue-200 focus:border-blue-800 ${errors.bacAverage ? "border-red-500" : ""}`}
+                        />
+                        {errors.bacAverage && <p className="text-sm text-red-600">{errors.bacAverage}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="bacType" className="text-gray-700">
+                          Type de Bac
+                        </Label>
+                        <Select value={formData.bacType} onValueChange={(value) => handleChange("bacType", value)}>
+                          <SelectTrigger className={`border-blue-200 ${errors.bacType ? "border-red-500" : ""}`}>
+                            <SelectValue placeholder="Sélectionnez votre type de bac" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bacTypes.map((type) => (
+                              <SelectItem key={type} value={type}>{type}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.bacType && <p className="text-sm text-red-600">{errors.bacType}</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Question TCF */}
+                  <div className="space-y-3">
+                    <Label className="text-gray-700 font-medium">Avez-vous passé le TCF (Test de Connaissance du Français) ?</Label>
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        variant={hasTcf === true ? "default" : "outline"}
+                        onClick={() => handleTcfChoice(true)}
+                        className={`flex-1 ${hasTcf === true ? "bg-blue-800 hover:bg-blue-900" : "border-blue-200 hover:bg-blue-50"}`}
+                      >
+                        Oui, j'ai passé le TCF
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={hasTcf === false ? "default" : "outline"}
+                        onClick={() => handleTcfChoice(false)}
+                        className={`flex-1 ${hasTcf === false ? "bg-blue-800 hover:bg-blue-900" : "border-blue-200 hover:bg-blue-50"}`}
+                      >
+                        Non, je n'ai pas le TCF
+                      </Button>
+                    </div>
+                    {errors.hasTcf && <p className="text-sm text-red-600">{errors.hasTcf}</p>}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="tcfScore" className="text-gray-700">
-                      Score TCF (Test de Connaissance du Français)
-                    </Label>
-                    <Input
-                      id="tcfScore"
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder="85"
-                      value={formData.tcfScore}
-                      onChange={(e) => handleChange("tcfScore", e.target.value)}
-                      className={`border-blue-200 focus:border-blue-800 ${errors.tcfScore ? "border-red-500" : ""}`}
-                    />
-                    {errors.tcfScore && <p className="text-sm text-red-600">{errors.tcfScore}</p>}
-                  </div>
+                  {/* Champ TCF (conditionnel) */}
+                  {hasTcf === true && (
+                    <div className="border-l-4 border-blue-200 pl-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="tcfScore" className="text-gray-700">
+                          Score TCF
+                        </Label>
+                        <Input
+                          id="tcfScore"
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="85"
+                          value={formData.tcfScore}
+                          onChange={(e) => handleChange("tcfScore", e.target.value)}
+                          className={`border-blue-200 focus:border-blue-800 ${errors.tcfScore ? "border-red-500" : ""}`}
+                        />
+                        {errors.tcfScore && <p className="text-sm text-red-600">{errors.tcfScore}</p>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -250,14 +412,14 @@ export default function ProfileSetupPage() {
               <div className="space-y-6">
                 <div className="text-center mb-6">
                   <BookOpen className="h-16 w-16 text-blue-800 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-gray-800">Études Actuelles</h3>
+                  <h3 className="text-xl font-semibold text-gray-800">Études Actuelles ou Souhaitées</h3>
                   <p className="text-gray-600">Où en êtes-vous dans votre parcours ?</p>
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="specialty" className="text-gray-700">
-                      Spécialité que vous étudiez
+                      Quelle spécialité étudiez-vous ou aimeriez-vous étudier ?
                     </Label>
                     <Select value={formData.specialty} onValueChange={(value) => handleChange("specialty", value)}>
                       <SelectTrigger className={`border-blue-200 ${errors.specialty ? "border-red-500" : ""}`}>
@@ -281,13 +443,12 @@ export default function ProfileSetupPage() {
                         <SelectValue placeholder="Sélectionnez votre niveau" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="terminale">Terminale</SelectItem>
                         <SelectItem value="L1">L1 (Licence 1ère année)</SelectItem>
                         <SelectItem value="L2">L2 (Licence 2ème année)</SelectItem>
                         <SelectItem value="L3">L3 (Licence 3ème année)</SelectItem>
                         <SelectItem value="M1">M1 (Master 1ère année)</SelectItem>
                         <SelectItem value="M2">M2 (Master 2ème année)</SelectItem>
-                        <SelectItem value="doctorat">Doctorat</SelectItem>
-                        <SelectItem value="autre">Autre</SelectItem>
                       </SelectContent>
                     </Select>
                     {errors.studyYear && <p className="text-sm text-red-600">{errors.studyYear}</p>}
@@ -315,9 +476,8 @@ export default function ProfileSetupPage() {
                         <SelectValue placeholder="Sélectionnez une réponse" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="oui">Oui, j'ai déjà été accepté(e)</SelectItem>
-                        <SelectItem value="non">Non, c'est ma première candidature</SelectItem>
-                        <SelectItem value="en-cours">J'ai des candidatures en cours</SelectItem>
+                        <SelectItem value="oui">Oui, j'ai déjà eu une acceptation</SelectItem>
+                        <SelectItem value="non">Non, je n'ai jamais eu une acceptation</SelectItem>
                       </SelectContent>
                     </Select>
                     {errors.hasAcceptance && <p className="text-sm text-red-600">{errors.hasAcceptance}</p>}
